@@ -76,3 +76,10 @@ services:
     entrypoint: ["node", "dist/index.js"]
     depends_on:
       - openclaw-gateway
+
+# 避开172.18和172.24网段，与公司服务器网段冲突
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 192.168.254.0/24
