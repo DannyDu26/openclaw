@@ -268,9 +268,9 @@ export OPENCLAW_BRIDGE_PORT="${OPENCLAW_BRIDGE_PORT:-18790}"
 export OPENCLAW_GATEWAY_BIND="${OPENCLAW_GATEWAY_BIND:-lan}"
 export OPENCLAW_IMAGE="$IMAGE_NAME"
 # Default APT packages to install in the Docker image.
-# Added python3-pip by default to ensure pip is available for Python scripts.
-# 默认安装的 APT 软件包。默认包含 python3-pip 以确保 Python 脚本可以使用 pip。
-export OPENCLAW_DOCKER_APT_PACKAGES="${OPENCLAW_DOCKER_APT_PACKAGES:-python3-pip}"
+# Added python3-pip and vim by default.
+# 默认安装的 APT 软件包。默认包含 python3-pip 和 vim。
+export OPENCLAW_DOCKER_APT_PACKAGES="${OPENCLAW_DOCKER_APT_PACKAGES:-python3-pip vim}"
 export OPENCLAW_EXTENSIONS="${OPENCLAW_EXTENSIONS:-}"
 export OPENCLAW_EXTRA_MOUNTS="$EXTRA_MOUNTS"
 export OPENCLAW_HOME_VOLUME="$HOME_VOLUME_NAME"
