@@ -1,19 +1,19 @@
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
-import { readBooleanParam } from "openclaw/plugin-sdk/boolean-param";
-import { withNormalizedTimestamp } from "../../../../src/agents/date-time.js";
-import { assertMediaNotDataUrl } from "../../../../src/agents/sandbox-paths.js";
+import { readDiscordComponentSpec } from "../components.js";
 import {
+  assertMediaNotDataUrl,
   type ActionGate,
   jsonResult,
   readNumberParam,
   readReactionParams,
   readStringArrayParam,
   readStringParam,
-} from "../../../../src/agents/tools/common.js";
-import type { OpenClawConfig } from "../../../../src/config/config.js";
-import type { DiscordActionConfig } from "../../../../src/config/types.discord.js";
-import { resolvePollMaxSelections } from "../../../../src/polls.js";
-import { readDiscordComponentSpec } from "../components.js";
+  resolvePollMaxSelections,
+  type DiscordActionConfig,
+  type OpenClawConfig,
+  withNormalizedTimestamp,
+  readBooleanParam,
+} from "../runtime-api.js";
 import {
   createThreadDiscord,
   deleteMessageDiscord,
@@ -63,6 +63,15 @@ export const discordMessagingActionRuntime = {
   sendVoiceMessageDiscord,
   unpinMessageDiscord,
 };
+
+function hasDiscordComponentObjectKeys(value: unknown): value is Record<string, unknown> {
+  return Boolean(
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.keys(value as Record<string, unknown>).length > 0,
+  );
+}
 
 function parseDiscordMessageLink(link: string) {
   const normalized = link.trim();
@@ -299,10 +308,9 @@ export async function handleDiscordMessagingAction(
       const asVoice = params.asVoice === true;
       const silent = params.silent === true;
       const rawComponents = params.components;
-      const componentSpec =
-        rawComponents && typeof rawComponents === "object" && !Array.isArray(rawComponents)
-          ? discordMessagingActionRuntime.readDiscordComponentSpec(rawComponents)
-          : null;
+      const componentSpec = hasDiscordComponentObjectKeys(rawComponents)
+        ? discordMessagingActionRuntime.readDiscordComponentSpec(rawComponents)
+        : null;
       const components: DiscordSendComponents | undefined =
         Array.isArray(rawComponents) || typeof rawComponents === "function"
           ? (rawComponents as DiscordSendComponents)
@@ -378,6 +386,7 @@ export async function handleDiscordMessagingAction(
         ...cfgOptions,
         ...(accountId ? { accountId } : {}),
         mediaUrl,
+        filename: filename ?? undefined,
         mediaLocalRoots: options?.mediaLocalRoots,
         replyTo,
         components,

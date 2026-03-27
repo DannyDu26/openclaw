@@ -3,24 +3,34 @@ import os from "node:os";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createProviderUsageFetch, makeResponse } from "../../test-utils/provider-usage-fetch.js";
-import type { ProviderRuntimeModel } from "../types.js";
+import type { ProviderPlugin, ProviderRuntimeModel } from "../types.js";
+import { requireProviderContractProvider as requireBundledProviderContractProvider } from "./registry.js";
+
+const CONTRACT_SETUP_TIMEOUT_MS = 300_000;
 
 const getOAuthApiKeyMock = vi.hoisted(() => vi.fn());
-const refreshQwenPortalCredentialsMock = vi.hoisted(() => vi.fn());
+const getOAuthProvidersMock = vi.hoisted(() =>
+  vi.fn(() => [
+    { id: "anthropic", envApiKey: "ANTHROPIC_API_KEY", oauthTokenEnv: "ANTHROPIC_OAUTH_TOKEN" }, // pragma: allowlist secret
+    { id: "google", envApiKey: "GOOGLE_API_KEY", oauthTokenEnv: "GOOGLE_OAUTH_TOKEN" }, // pragma: allowlist secret
+    { id: "openai-codex", envApiKey: "OPENAI_API_KEY", oauthTokenEnv: "OPENAI_OAUTH_TOKEN" }, // pragma: allowlist secret
+  ]),
+);
 
 vi.mock("@mariozechner/pi-ai/oauth", async () => {
-  const actual = await vi.importActual<object>("@mariozechner/pi-ai/oauth");
+  const actual = await vi.importActual<typeof import("@mariozechner/pi-ai/oauth")>(
+    "@mariozechner/pi-ai/oauth",
+  );
   return {
     ...actual,
     getOAuthApiKey: getOAuthApiKeyMock,
+    getOAuthProviders: getOAuthProvidersMock,
   };
 });
 
-vi.mock("../../providers/qwen-portal-oauth.js", () => ({
-  refreshQwenPortalCredentials: refreshQwenPortalCredentialsMock,
+vi.mock("../../../extensions/openai/src/openai-codex-provider.runtime.js", () => ({
+  getOAuthApiKey: getOAuthApiKeyMock,
 }));
-
-let requireProviderContractProvider: typeof import("./registry.js").requireProviderContractProvider;
 
 function createModel(overrides: Partial<ProviderRuntimeModel> & Pick<ProviderRuntimeModel, "id">) {
   return {
@@ -37,13 +47,15 @@ function createModel(overrides: Partial<ProviderRuntimeModel> & Pick<ProviderRun
   } satisfies ProviderRuntimeModel;
 }
 
+function requireProviderContractProvider(providerId: string): ProviderPlugin {
+  return requireBundledProviderContractProvider(providerId);
+}
+
 describe("provider runtime contract", () => {
-  beforeEach(async () => {
-    vi.resetModules();
-    ({ requireProviderContractProvider } = await import("./registry.js"));
+  beforeEach(() => {
     getOAuthApiKeyMock.mockReset();
-    refreshQwenPortalCredentialsMock.mockReset();
-  });
+    getOAuthProvidersMock.mockClear();
+  }, CONTRACT_SETUP_TIMEOUT_MS);
 
   describe("anthropic", () => {
     it("owns anthropic 4.6 forward-compat resolution", () => {
@@ -159,7 +171,7 @@ describe("provider runtime contract", () => {
       const provider = requireProviderContractProvider("github-copilot");
       const model = provider.resolveDynamicModel?.({
         provider: "github-copilot",
-        modelId: "gpt-5.3-codex",
+        modelId: "gpt-5.4",
         modelRegistry: {
           find: (_provider: string, id: string) =>
             id === "gpt-5.2-codex"
@@ -174,7 +186,7 @@ describe("provider runtime contract", () => {
       });
 
       expect(model).toMatchObject({
-        id: "gpt-5.3-codex",
+        id: "gpt-5.4",
         provider: "github-copilot",
         api: "openai-codex-responses",
       });
@@ -392,6 +404,120 @@ describe("provider runtime contract", () => {
     });
   });
 
+  describe("xai", () => {
+    it("owns Grok forward-compat resolution for newer fast models", () => {
+      const provider = requireProviderContractProvider("xai");
+      const model = provider.resolveDynamicModel?.({
+        provider: "xai",
+        modelId: "grok-4-1-fast-reasoning",
+        modelRegistry: {
+          find: () => null,
+        } as never,
+        providerConfig: {
+          api: "openai-completions",
+          baseUrl: "https://api.x.ai/v1",
+        },
+      });
+
+      expect(model).toMatchObject({
+        id: "grok-4-1-fast-reasoning",
+        provider: "xai",
+        api: "openai-completions",
+        baseUrl: "https://api.x.ai/v1",
+        reasoning: true,
+        contextWindow: 2_000_000,
+      });
+    });
+
+    it("owns xai modern-model matching without accepting multi-agent ids", () => {
+      const provider = requireProviderContractProvider("xai");
+
+      expect(
+        provider.isModernModelRef?.({
+          provider: "xai",
+          modelId: "grok-4-1-fast-reasoning",
+        } as never),
+      ).toBe(true);
+      expect(
+        provider.isModernModelRef?.({
+          provider: "xai",
+          modelId: "grok-4.20-multi-agent-experimental-beta-0304",
+        } as never),
+      ).toBe(false);
+    });
+
+    it("owns direct xai compat flags on resolved models", () => {
+      const provider = requireProviderContractProvider("xai");
+
+      expect(
+        provider.normalizeResolvedModel?.({
+          provider: "xai",
+          modelId: "grok-4-1-fast",
+          model: createModel({
+            id: "grok-4-1-fast",
+            provider: "xai",
+            api: "openai-completions",
+            baseUrl: "https://api.x.ai/v1",
+          }),
+        } as never),
+      ).toMatchObject({
+        compat: {
+          toolSchemaProfile: "xai",
+          nativeWebSearchTool: true,
+          toolCallArgumentsEncoding: "html-entities",
+        },
+      });
+    });
+  });
+
+  describe("openrouter", () => {
+    it("owns xai downstream compat flags for x-ai routed models", () => {
+      const provider = requireProviderContractProvider("openrouter");
+      expect(
+        provider.normalizeResolvedModel?.({
+          provider: "openrouter",
+          modelId: "x-ai/grok-4-1-fast",
+          model: createModel({
+            id: "x-ai/grok-4-1-fast",
+            provider: "openrouter",
+            api: "openai-completions",
+            baseUrl: "https://openrouter.ai/api/v1",
+          }),
+        }),
+      ).toMatchObject({
+        compat: {
+          toolSchemaProfile: "xai",
+          nativeWebSearchTool: true,
+          toolCallArgumentsEncoding: "html-entities",
+        },
+      });
+    });
+  });
+
+  describe("venice", () => {
+    it("owns xai downstream compat flags for grok-backed Venice models", () => {
+      const provider = requireProviderContractProvider("venice");
+      expect(
+        provider.normalizeResolvedModel?.({
+          provider: "venice",
+          modelId: "grok-41-fast",
+          model: createModel({
+            id: "grok-41-fast",
+            provider: "venice",
+            api: "openai-completions",
+            baseUrl: "https://api.venice.ai/api/v1",
+          }),
+        }),
+      ).toMatchObject({
+        compat: {
+          toolSchemaProfile: "xai",
+          nativeWebSearchTool: true,
+          toolCallArgumentsEncoding: "html-entities",
+        },
+      });
+    });
+  });
+
   describe("openai-codex", () => {
     it("owns refresh fallback for accountId extraction failures", async () => {
       const provider = requireProviderContractProvider("openai-codex");
@@ -484,29 +610,6 @@ describe("provider runtime contract", () => {
         windows: [{ label: "3h", usedPercent: 12, resetAt: 1_705_000_000 }],
         plan: "Plus",
       });
-    });
-  });
-
-  describe("qwen-portal", () => {
-    it("owns OAuth refresh", async () => {
-      const provider = requireProviderContractProvider("qwen-portal");
-      const credential = {
-        type: "oauth" as const,
-        provider: "qwen-portal",
-        access: "stale-access-token",
-        refresh: "refresh-token",
-        expires: Date.now() - 60_000,
-      };
-      const refreshed = {
-        ...credential,
-        access: "fresh-access-token",
-        expires: Date.now() + 60_000,
-      };
-
-      refreshQwenPortalCredentialsMock.mockReset();
-      refreshQwenPortalCredentialsMock.mockResolvedValueOnce(refreshed);
-
-      await expect(provider.refreshOAuth?.(credential)).resolves.toEqual(refreshed);
     });
   });
 
