@@ -1,6 +1,7 @@
 services:
   openclaw-gateway:
     image: ${OPENCLAW_IMAGE:-openclaw:local}
+    network_mode: host
     environment:
       HOME: /home/node
       TERM: xterm-256color
@@ -21,9 +22,9 @@ services:
       # - /var/run/docker.sock:/var/run/docker.sock
     # group_add:
     #   - "${DOCKER_GID:-999}"
-    ports:
-      - "${OPENCLAW_GATEWAY_PORT:-18789}:18789"
-      - "${OPENCLAW_BRIDGE_PORT:-18790}:18790"
+    # ports:
+    #  - "${OPENCLAW_GATEWAY_PORT:-18789}:18789"
+    #  - "${OPENCLAW_BRIDGE_PORT:-18790}:18790"
     init: true
     restart: unless-stopped
     command:
@@ -76,10 +77,3 @@ services:
     entrypoint: ["node", "dist/index.js"]
     depends_on:
       - openclaw-gateway
-
-# 避开172.18和172.24网段，与公司服务器网段冲突
-networks:
-  default:
-    ipam:
-      config:
-        - subnet: 192.168.254.0/24

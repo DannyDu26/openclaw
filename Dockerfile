@@ -145,7 +145,11 @@ RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,shar
       DEBIAN_FRONTEND=noninteractive apt-get upgrade -y --no-install-recommends; \
     fi && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-      procps hostname curl git lsof openssl python3-pip vim
+      procps hostname curl git lsof openssl python3-pip vim \
+      libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
+      libdbus-1-3 libxkbcommon0 libx11-xcb1 libxcomposite1 libxdamage1 \
+      libxext6 libxfixes3 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 \
+      libasound2 libxshmfence1 xvfb
 
 RUN chown node:node /app
 
